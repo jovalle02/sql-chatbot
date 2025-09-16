@@ -74,7 +74,6 @@ Create a `.env.local` file with the following variables:
 
 ```bash
 YOUR_CUSTOM_AI_ENDPOINT=your_ai_service_url
-YOUR_API_KEY=your_api_authentication_key
 ```
 
 ### Installation
