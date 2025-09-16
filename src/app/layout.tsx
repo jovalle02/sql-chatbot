@@ -13,8 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Chatbot",
-  description: "Chatbot - An AI-powered assistant for your database queries.",
+  title: "Text2SQL",
+  description: "Text2SQL - Explore your data with natural language queries.",
+  icons: {
+    icon: '/favicon.png',
+  }
 };
 
 export default function RootLayout({
