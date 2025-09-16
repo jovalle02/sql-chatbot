@@ -15,7 +15,8 @@ async function streamToCustomAI(
   userId: string,
   threadId: string,
   interruptPolicy: string,
-  chatModelSettings: ChatModelSettings
+  chatModelSettings: ChatModelSettings,
+  tablesSchemaXml: string // Add this parameter
 ) {
   const encoder = new TextEncoder();
   
@@ -32,6 +33,7 @@ async function streamToCustomAI(
       body: JSON.stringify({
         content: message,
         interrupt_policy: interruptPolicy,
+        tables_schema_xml: tablesSchemaXml, // Include the XML schema
         chat_model_settings: {
           primary_model: chatModelSettings.primary_model,
           secondary_model: chatModelSettings.secondary_model,
@@ -96,6 +98,7 @@ interface RequestBody {
   userId?: string;
   threadId?: string;
   interrupt_policy?: string;
+  tables_schema_xml: string; // Now required
   chatModelSettings?: ChatModelSettings;
 }
 
@@ -107,13 +110,27 @@ export async function POST(request: NextRequest) {
       userId, 
       threadId, 
       interrupt_policy,
+      tables_schema_xml,
       chatModelSettings
     }: RequestBody = await request.json();
 
     if (!message || typeof message !== 'string') {
       return new Response(
         JSON.stringify({ error: 'Message is required' }), 
-        { status: 400 }
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    if (!tables_schema_xml || typeof tables_schema_xml !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'tables_schema_xml is required' }), 
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
       );
     }
 
@@ -136,7 +153,8 @@ export async function POST(request: NextRequest) {
           finalUserId, 
           finalThreadId,
           finalInterruptPolicy,
-          finalChatModelSettings
+          finalChatModelSettings,
+          tables_schema_xml // Pass the XML schema
         );
       },
     });
@@ -160,7 +178,10 @@ export async function POST(request: NextRequest) {
         error: 'Failed to process request',
         details: errorMessage
       }), 
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { 
+        status: 500, 
+        headers: { 'Content-Type': 'application/json' } 
+      }
     );
   }
 }

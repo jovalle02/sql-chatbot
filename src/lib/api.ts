@@ -1,11 +1,13 @@
 // src/lib/api.ts
 import { ContentParser, SqlExecution, ThinkingBlock, InterruptedQuery, ContentBlock, GroupedContentBlock } from "./content-parser";
+import { getGlobalTablesSchemaXml } from "./global-store";
 
 export interface StreamChatRequest {
   message: string;
   userId: string;
   threadId: string;
   interrupt_policy: string;
+  tables_schema_xml: string;
   chatModelSettings: {
     primary_model: string;
     secondary_model: string;
@@ -13,8 +15,86 @@ export interface StreamChatRequest {
   };
 }
 
+// New interfaces for file upload
+export interface UploadResponse {
+  xmlString: string;
+}
+
+export interface UploadErrorResponse {
+  error: string;
+  details?: string;
+}
+
+// File upload function
+export async function uploadFiles(
+  files: File[]
+): Promise<UploadResponse> {
+  try {
+    // Validate files before uploading
+    if (files.length === 0) {
+      throw new Error('No files provided');
+    }
+
+    // Validate file types
+    const invalidFiles = files.filter(file => 
+      !file.name.toLowerCase().endsWith('.csv')
+    );
+    
+    if (invalidFiles.length > 0) {
+      throw new Error(`Only CSV files are supported. Invalid files: ${invalidFiles.map(f => f.name).join(', ')}`);
+    }
+
+    // Validate file sizes (max 50MB per file)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    const oversizedFiles = files.filter(file => file.size > maxSize);
+    
+    if (oversizedFiles.length > 0) {
+      throw new Error(`File(s) too large (max 50MB). Oversized files: ${oversizedFiles.map(f => f.name).join(', ')}`);
+    }
+
+    // Create FormData
+    const formData = new FormData();
+    
+    // Add files to FormData
+    files.forEach((file) => {
+      formData.append('file', file);
+    });
+
+    // Use modern fetch API
+    const response = await fetch('/api/data/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData: UploadErrorResponse = await response.json().catch(() => ({ 
+        error: `Upload failed with status: ${response.status}` 
+      }));
+      throw new Error(errorData.error || `Upload failed with status: ${response.status}`);
+    }
+
+    const result: UploadResponse = await response.json();
+    
+    if (!result.xmlString) {
+      throw new Error('Invalid response from server: missing xml');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw error instanceof Error ? error : new Error('Upload failed');
+  }
+}
+
+// Convenience function for single file upload
+export async function uploadSingleFile(
+  file: File
+): Promise<UploadResponse> {
+  return uploadFiles([file]);
+}
+
 export async function streamChatSSE(
-  request: StreamChatRequest,
+  request: Omit<StreamChatRequest, 'tables_schema_xml'>,
   onChunk: (
     text: string, 
     thinking?: ThinkingBlock[], 
@@ -29,12 +109,23 @@ export async function streamChatSSE(
   onComplete: () => void
 ) {
   try {
+    const tablesSchemaXml = getGlobalTablesSchemaXml();
+
+    if (!tablesSchemaXml) {
+      throw new Error('No CSV data available. Please upload a CSV file first.');
+    }
+
+    const completeRequest: StreamChatRequest = {
+      ...request,
+      tables_schema_xml: tablesSchemaXml
+    };
+
     const response = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(completeRequest),
     });
 
     if (!response.ok) {
@@ -118,10 +209,10 @@ export interface ExecuteQueryRequest {
 
 // New function for executing queries directly (used after interrupt resume)
 export async function executeQuerySSE(
-  request: ExecuteQueryRequest,
+  request: Omit<ExecuteQueryRequest, 'tables_schema_xml'>,
   userId: string,
   threadId: string,
-  targetSqlId: string | undefined, // Add this parameter
+  targetSqlId: string | undefined,
   onChunk: (
     text: string, 
     thinking?: ThinkingBlock[], 
@@ -136,16 +227,25 @@ export async function executeQuerySSE(
   onComplete: () => void
 ) {
   try {
+    const tablesSchemaXml = getGlobalTablesSchemaXml();
+    
+    if (!tablesSchemaXml) {
+      throw new Error('No CSV data available. Please upload a CSV file first.');
+    }
+
+    const completeRequest = {
+      ...request,
+      tables_schema_xml: tablesSchemaXml,
+      userId,
+      threadId
+    };
+
     const response = await fetch('/api/chat/stream/resume', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        ...request,
-        userId,
-        threadId
-      }),
+      body: JSON.stringify(completeRequest),
     });
 
     if (!response.ok) {

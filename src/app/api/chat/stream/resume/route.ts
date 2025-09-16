@@ -11,6 +11,7 @@ interface ChatModelSettings {
 interface QueryExecuteRequest {
   query: string;
   reason: string;
+  tables_schema_xml: string; // Now required
   chat_model_settings?: ChatModelSettings;
   userId?: string;
   threadId?: string;
@@ -35,7 +36,8 @@ async function streamQueryExecution(
   chatModelSettings: ChatModelSettings,
   controller: ReadableStreamDefaultController,
   userId: string,
-  threadId: string
+  threadId: string,
+  tablesSchemaXml: string // Add this parameter
 ): Promise<void> {
   const encoder = new TextEncoder();
   
@@ -52,6 +54,7 @@ async function streamQueryExecution(
       body: JSON.stringify({
         query,
         reason,
+        tables_schema_xml: tablesSchemaXml, // Include the XML schema
         chat_model_settings: {
           primary_model: chatModelSettings.primary_model,
           secondary_model: chatModelSettings.secondary_model,
@@ -120,6 +123,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     const { 
       query,
       reason,
+      tables_schema_xml,
       chat_model_settings,
       userId, 
       threadId 
@@ -145,6 +149,16 @@ export async function POST(request: NextRequest): Promise<Response> {
       );
     }
 
+    if (!tables_schema_xml || typeof tables_schema_xml !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'tables_schema_xml is required' }), 
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
     // Use provided values or defaults
     const finalUserId = userId || 'default-user';
     const finalThreadId = threadId || `thread-${Date.now()}`;
@@ -163,7 +177,8 @@ export async function POST(request: NextRequest): Promise<Response> {
           finalChatModelSettings,
           controller,
           finalUserId,
-          finalThreadId
+          finalThreadId,
+          tables_schema_xml // Pass the XML schema
         );
       },
     });

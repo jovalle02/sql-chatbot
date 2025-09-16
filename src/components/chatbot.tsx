@@ -13,6 +13,7 @@ import { streamChatSSE, executeQuerySSE, ExecuteQueryRequest } from '../lib/api'
 import { Message, MessageContainer, InterruptedQuery } from './message-container';
 import { ContentBlock, GroupedContentBlock, SqlExecution, ThinkingBlock } from '../lib/content-parser';
 import { Database, AlertCircle, Eye, Zap, Users } from 'lucide-react';
+import { hasTablesSchemaXml } from '@/lib/global-store';
 
 interface ChatBotProps {
   className?: string;
@@ -239,8 +240,8 @@ export const ChatBot: React.FC<ChatBotProps> = ({
           threadId: threadIdRef.current,
           interrupt_policy: currentInterruptPolicy,
           chatModelSettings: {
-            primary_model: "us.anthropic.claude-sonnet-4-20250514-v1:0",
-            secondary_model: "us.anthropic.claude-opus-4-20250514-v1:0",
+            primary_model: "claude-sonnet-4-20250514",
+            secondary_model: "claude-opus-4-1-20250805",
             max_tokens: 16384
           }
         },
@@ -364,6 +365,12 @@ export const ChatBot: React.FC<ChatBotProps> = ({
     const currentSqlExecutions = sqlExecutionsRef.current;
     
     if (!setSqlExecutions) return;
+
+    if (!hasTablesSchemaXml()) {
+    console.error('Cannot resume: No CSV data available');
+    // You could show an error to the user here
+    return;
+  }
     
     // Find the query (look for interrupted OR executing status to be more flexible)
     const targetSql = currentSqlExecutions.find(sql => 
@@ -530,13 +537,14 @@ export const ChatBot: React.FC<ChatBotProps> = ({
     flex-col
     w-full
     h-full
+    max-h-full
     relative
     ${className || ''}
   `.replace(/\s+/g, ' ').trim();
 
   return (
     <motion.div 
-      className={containerClassName}
+      className={`${containerClassName} ${!hasMessages ? 'justify-center' : ''}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
@@ -554,7 +562,7 @@ export const ChatBot: React.FC<ChatBotProps> = ({
       
       {/* Messages Container */}
       {hasMessages && (
-        <MessageContainer className="flex-1 overflow-y-auto min-h-0">
+        <MessageContainer className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
           {messages.map((message) => (
             message.type === 'user' ? (
               <UserMessage 
